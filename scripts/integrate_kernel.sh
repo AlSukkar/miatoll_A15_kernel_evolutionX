@@ -2,7 +2,8 @@
 
 # Kernel Integration and Build Script
 # This runs inside the Docker container
-
+sudo apt update
+sudo apt upgrade
 set -e
 
 echo "🚀 Starting KernelSU Next + SUSFS integration..."
