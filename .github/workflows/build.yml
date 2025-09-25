@@ -1,12 +1,11 @@
 name: Build KernelSU-Next for MiAtoll
 
 on:
+  push:
+    branches: [ miatoll ]
+  pull_request:
+    branches: [ miatoll ]
   workflow_dispatch:
-    inputs:
-      ksu_next_ref:
-        description: "KernelSU-Next ref (branch or tag) (e.g. main, next, v1.0.8)"
-        required: false
-        default: "main"
 
 jobs:
   build:
@@ -14,20 +13,33 @@ jobs:
     container: ghcr.io/tedomi2705/kernel_builder_image:latest
 
     steps:
-      - name: 📂 Checkout builder's sourcecode
+      - name: 📂 Checkout builder code
         uses: actions/checkout@v4
 
-      - name: ⚡ Checkout kernel's sourcecode
+      - name: ⚡ Checkout kernel code
         run: |
-          git clone --depth=1 https://github.com/Evolution-x-devices/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b bka
+          git clone --depth=1 https://github.com/Evolution-x-devices/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b vic
 
-      - name: 📥 Update KernelSU-Next
+      - name: 🏷 Fetch latest KernelSU-Next release tag
+        id: get_ksunext_tag
         run: |
-          cd kernel_xiaomi_sm6250/KernelSU-Next
-          git fetch --tags origin "${{ github.event.inputs.ksu_next_ref }}"
-          git checkout FETCH_HEAD
+          # Use GitHub API to get latest release tag name
+          TAG=$(curl -s https://api.github.com/repos/KernelSU-Next/KernelSU-Next/releases/latest \
+            | grep '"tag_name":' \
+            | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "Latest KSU-Next tag: $TAG"
+          echo "KSU_NEXT_TAG=$TAG" >> $GITHUB_ENV
 
-      - name: 📅 Export build date
+      - name: 📥 Clone KernelSU-Next at latest release
+        run: |
+          cd kernel_xiaomi_sm6250
+          rm -rf KernelSU-Next
+          git clone https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU-Next
+          cd KernelSU-Next
+          git checkout ${KSU_NEXT_TAG}
+          cd ..
+
+      - name: 📅 Export date
         run: echo "DATE=$(date +%d%m%Y)" >> $GITHUB_ENV
 
       - name: 📥 Clone AnyKernel3
@@ -41,7 +53,6 @@ jobs:
           cd kernel_xiaomi_sm6250
           DEVICE_CODENAME=miatoll
           KERNEL_VERSION=$(make kernelversion)
-
           echo "DEVICE_CODENAME=$DEVICE_CODENAME" >> $GITHUB_ENV
           echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
 
@@ -50,38 +61,36 @@ jobs:
         with:
           max-size: 7G
 
-      - name: 🛠️ Build the kernel
+      - name: 🛠️ Build kernel
         run: |
-          export KSU_NEXT_REF="${{ github.event.inputs.ksu_next_ref }}"
+          export KSU_NEXT_REF="${KSU_NEXT_TAG}"
           ./build.sh
 
       - name: 🚀 Pack AnyKernel3
         run: |
           cd kernel_xiaomi_sm6250
           ZIP_NAME="Kernel-Caelum-${DEVICE_CODENAME}-${KERNEL_VERSION}-${DATE}.zip"
-
           mkdir -p anykernel/dtb
           cp out/arch/arm64/boot/Image.gz anykernel/
           cp out/arch/arm64/boot/dtbo.img anykernel/
           cp out/arch/arm64/boot/dtb.img anykernel/dtb
-
           cd anykernel && zip -r9 $ZIP_NAME ./*
           mv $ZIP_NAME ../../
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
-      - name: 🤌 Copy as alternative name
+      - name: 🤌 Copy alternative
         run: |
-          ZIP_ALTERNATIVE="KernelSU-Next-Caelum-${DEVICE_CODENAME}-latest.zip"
-          cp ${ZIP_NAME} $ZIP_ALTERNATIVE
-          echo "ZIP_ALTERNATIVE=$ZIP_ALTERNATIVE" >> $GITHUB_ENV
+          ZIP_ALT="KernelSU-Next-Caelum-${DEVICE_CODENAME}-latest.zip"
+          cp ${ZIP_NAME} $ZIP_ALT
+          echo "ZIP_ALTERNATIVE=$ZIP_ALT" >> $GITHUB_ENV
 
-      - name: 📤 Publish release (latest)
+      - name: 📤 Publish latest release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_ALTERNATIVE }}
-          tag_name: "latest"
+          tag_name: latest
 
-      - name: 📤 Publish release (dated)
+      - name: 📤 Publish dated release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_NAME }}
