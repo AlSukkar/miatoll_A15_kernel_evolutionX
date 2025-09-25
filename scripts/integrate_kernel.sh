@@ -4,6 +4,7 @@
 # This runs inside the Docker container
 sudo apt update
 sudo apt upgrade
+sudo apt install curl
 set -e
 
 echo "🚀 Starting KernelSU Next + SUSFS integration..."
