@@ -1,7 +1,6 @@
 name: Build Evolution-X Kernel with KernelSU Next + SUSFS
 
 on:
-  # Manual triggering only
   workflow_dispatch:
     inputs:
       kernelsu_version:
@@ -28,7 +27,6 @@ on:
         default: false
         type: boolean
 
-  # Optional: Trigger on pushes to specific files (if you want to add custom patches)
   push:
     paths:
       - '.github/workflows/build-kernel.yml'
@@ -56,6 +54,13 @@ jobs:
         echo "date=$(date +'%Y%m%d_%H%M')" >> $GITHUB_OUTPUT
         echo "readable_date=$(date +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_OUTPUT
 
+    - name: Set Variables
+      id: vars
+      run: |
+        echo "ksu_version=${{ github.event.inputs.kernelsu_version || 'v1.0.5' }}" >> $GITHUB_OUTPUT
+        echo "kernel_branch=${{ github.event.inputs.kernel_branch || 'bka' }}" >> $GITHUB_OUTPUT
+        echo "force_build=${{ github.event.inputs.force_build || 'false' }}" >> $GITHUB_OUTPUT
+
     - name: Download Previous Build State
       continue-on-error: true
       uses: actions/download-artifact@v4
@@ -68,8 +73,7 @@ jobs:
       run: |
         echo "🔍 Checking for changes in kernel and KernelSU repositories..."
         
-        FORCE_BUILD="${{ github.event.inputs.force_build }}"
-        if [ "$FORCE_BUILD" = "true" ]; then
+        if [ "${{ steps.vars.outputs.force_build }}" = "true" ]; then
           echo "⚡ Force build requested - skipping change detection"
           echo "should_build=true" >> $GITHUB_OUTPUT
           echo "reason=Force build requested by user" >> $GITHUB_OUTPUT
@@ -77,7 +81,7 @@ jobs:
         fi
         
         # Get current commit hashes
-        KERNEL_COMMIT=$(git ls-remote $KERNEL_REPO refs/heads/${{ github.event.inputs.kernel_branch || 'bka' }} | cut -f1)
+        KERNEL_COMMIT=$(git ls-remote $KERNEL_REPO refs/heads/${{ steps.vars.outputs.kernel_branch }} | cut -f1)
         KSU_COMMIT=$(git ls-remote https://github.com/rifsxd/KernelSU-Next refs/heads/next | cut -f1)
         SUSFS_COMMIT=$(git ls-remote https://github.com/rifsxd/KernelSU-Next refs/heads/next-susfs | cut -f1)
         
@@ -105,13 +109,21 @@ jobs:
           
           if [ "$KSU_COMMIT" != "$LAST_KSU" ]; then
             CHANGES_DETECTED=true
-            CHANGE_REASON="${CHANGE_REASON:+$CHANGE_REASON, }KernelSU Next updated"
+            if [ -n "$CHANGE_REASON" ]; then
+              CHANGE_REASON="$CHANGE_REASON, KernelSU Next updated"
+            else
+              CHANGE_REASON="KernelSU Next updated"
+            fi
             echo "🔄 KernelSU Next changes detected"
           fi
           
           if [ "$SUSFS_COMMIT" != "$LAST_SUSFS" ]; then
             CHANGES_DETECTED=true
-            CHANGE_REASON="${CHANGE_REASON:+$CHANGE_REASON, }SUSFS updated"
+            if [ -n "$CHANGE_REASON" ]; then
+              CHANGE_REASON="$CHANGE_REASON, SUSFS updated"
+            else
+              CHANGE_REASON="SUSFS updated"
+            fi
             echo "🔄 SUSFS changes detected"
           fi
           
@@ -153,7 +165,7 @@ jobs:
       run: |
         echo "📥 Cloning kernel source..."
         echo "📋 Build reason: ${{ steps.changes.outputs.reason }}"
-        git clone --depth=1 --branch=${{ github.event.inputs.kernel_branch || 'bka' }} $KERNEL_REPO kernel_source
+        git clone --depth=1 --branch=${{ steps.vars.outputs.kernel_branch }} $KERNEL_REPO kernel_source
         cd kernel_source
         echo "📊 Kernel version: $(make kernelversion)"
         echo "📊 Commit: $(git rev-parse --short HEAD)"
@@ -164,43 +176,45 @@ jobs:
       run: |
         echo "🔧 Starting integration and build in Docker container..."
         
+        KSU_VERSION="${{ steps.vars.outputs.ksu_version }}"
+        
         docker run --rm \
           -v "$PWD/kernel_source:/workspace/kernel" \
           -v "$PWD/output:/workspace/output" \
           -w /workspace/kernel \
           $DOCKER_IMAGE \
-          bash -c '
+          bash -c "
             set -e
             mkdir -p /workspace/output
             
-            echo "🎯 Integrating KernelSU Next..."
-            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s ${{ github.event.inputs.kernelsu_version || "v1.0.5" }}
+            echo '🎯 Integrating KernelSU Next...'
+            curl -LSs 'https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh' | bash -s $KSU_VERSION
             
-            echo "🛡️ Integrating SUSFS..."
-            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
+            echo '🛡️ Integrating SUSFS...'
+            curl -LSs 'https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh' | bash -s next-susfs
             
-            echo "⚙️ Configuring kernel for Evolution-X..."
+            echo '⚙️ Configuring kernel for Evolution-X...'
             
             # Backup original config
             cp arch/arm64/configs/miatoll_defconfig arch/arm64/configs/miatoll_defconfig.backup
             
             # Add KernelSU configurations
-            cat >> arch/arm64/configs/miatoll_defconfig << EOF
+            cat >> arch/arm64/configs/miatoll_defconfig << 'EOFCONFIG'
 
-        # KernelSU Next Configuration
-        CONFIG_KPROBES=y
-        CONFIG_HAVE_KPROBES=y
-        CONFIG_KPROBE_EVENTS=y
-        CONFIG_MODULES=y
-        CONFIG_MODULE_UNLOAD=y
-        CONFIG_MODVERSIONS=y
+# KernelSU Next Configuration
+CONFIG_KPROBES=y
+CONFIG_HAVE_KPROBES=y
+CONFIG_KPROBE_EVENTS=y
+CONFIG_MODULES=y
+CONFIG_MODULE_UNLOAD=y
+CONFIG_MODVERSIONS=y
 
-        # SUSFS Configuration (if available)
-        CONFIG_SUSFS=y
-        CONFIG_SUSFS_SUSPICIOUS_PROC_PATH=y
-        EOF
+# SUSFS Configuration (if available)
+CONFIG_SUSFS=y
+CONFIG_SUSFS_SUSPICIOUS_PROC_PATH=y
+EOFCONFIG
             
-            echo "🏗️ Building kernel..."
+            echo '🏗️ Building kernel...'
             export ARCH=arm64
             export SUBARCH=arm64
             export KBUILD_BUILD_USER=EvolutionX-Auto
@@ -210,11 +224,11 @@ jobs:
             make clean
             make mrproper
             make miatoll_defconfig
-            make -j$(nproc) 2>&1 | tee /workspace/output/build.log
+            make -j\$(nproc) 2>&1 | tee /workspace/output/build.log
             
             # Verify build success
-            if [ -f "arch/arm64/boot/Image.gz-dtb" ]; then
-              echo "✅ Build successful!"
+            if [ -f 'arch/arm64/boot/Image.gz-dtb' ]; then
+              echo '✅ Build successful!'
               
               # Copy kernel image for raw download
               cp arch/arm64/boot/Image.gz-dtb /workspace/output/
@@ -222,12 +236,12 @@ jobs:
               # Copy final config
               cp .config /workspace/output/kernel.config
               
-              echo "📦 Kernel image ready, creating AnyKernel3 flashable ZIP..."
+              echo '📦 Kernel image ready, creating AnyKernel3 flashable ZIP...'
             else
-              echo "❌ Build failed - no kernel image found!"
+              echo '❌ Build failed - no kernel image found!'
               exit 1
             fi
-          '
+          "
 
     - name: Create AnyKernel3 Flashable ZIP
       if: steps.changes.outputs.should_build == 'true'
@@ -245,87 +259,87 @@ jobs:
         cp ../output/Image.gz-dtb .
         
         # Create custom anykernel.sh for Evolution-X miatoll
-        cat > anykernel.sh << 'EOF'
-        # AnyKernel3 Ramdisk Mod Script
-        # osm0sis @ xda-developers
+        cat > anykernel.sh << 'EOFAK3'
+# AnyKernel3 Ramdisk Mod Script
+# osm0sis @ xda-developers
 
-        ## AnyKernel setup
-        # begin properties
-        properties() { '
-        kernel.string=Evolution-X Kernel with KernelSU Next + SUSFS
-        do.devicecheck=1
-        do.modules=0
-        do.systemless=1
-        do.cleanup=1
-        do.cleanuponabort=0
-        device.name1=miatoll
-        device.name2=curtana
-        device.name3=excalibur
-        device.name4=gram
-        device.name5=joyeuse
-        supported.versions=11-14
-        supported.patchlevels=
-        '; } # end properties
+## AnyKernel setup
+# begin properties
+properties() { '
+kernel.string=Evolution-X Kernel with KernelSU Next + SUSFS
+do.devicecheck=1
+do.modules=0
+do.systemless=1
+do.cleanup=1
+do.cleanuponabort=0
+device.name1=miatoll
+device.name2=curtana
+device.name3=excalibur
+device.name4=gram
+device.name5=joyeuse
+supported.versions=11-14
+supported.patchlevels=
+'; } # end properties
 
-        # shell variables
-        block=boot;
-        is_slot_device=1;
-        ramdisk_compression=auto;
-        patch_vbmeta_flag=auto;
+# shell variables
+block=boot;
+is_slot_device=1;
+ramdisk_compression=auto;
+patch_vbmeta_flag=auto;
 
-        ## AnyKernel methods (DO NOT CHANGE)
-        # import patching functions/variables - see for reference
-        . tools/ak3-core.sh;
+## AnyKernel methods (DO NOT CHANGE)
+# import patching functions/variables - see for reference
+. tools/ak3-core.sh;
 
-        ## AnyKernel file attributes
-        # set permissions/ownership for included ramdisk files
-        set_perm_recursive 0 0 755 644 $ramdisk/*;
-        set_perm_recursive 0 0 750 750 $ramdisk/init* $ramdisk/sbin;
+## AnyKernel file attributes
+# set permissions/ownership for included ramdisk files
+set_perm_recursive 0 0 755 644 $ramdisk/*;
+set_perm_recursive 0 0 750 750 $ramdisk/init* $ramdisk/sbin;
 
-        ## AnyKernel boot install
-        dump_boot;
-        write_boot;
-        ## end boot install
-        EOF
+## AnyKernel boot install
+dump_boot;
+write_boot;
+## end boot install
+EOFAK3
         
         # Create build info for the ZIP
-        cat > build_info.txt << EOF
-        Evolution-X Kernel with KernelSU Next + SUSFS
-        ==============================================
+        cat > build_info.txt << EOFBUILD
+Evolution-X Kernel with KernelSU Next + SUSFS
+==============================================
 
-        Build Date: $(date)
-        Target Device: Xiaomi SM6250 (miatoll family)
-        ROM: Evolution-X
-        KernelSU Version: ${{ github.event.inputs.kernelsu_version || 'v1.0.5' }}
-        SUSFS: Integrated (next-susfs)
+Build Date: $(date)
+Target Device: Xiaomi SM6250 (miatoll family)
+ROM: Evolution-X
+KernelSU Version: ${{ steps.vars.outputs.ksu_version }}
+SUSFS: Integrated (next-susfs)
 
-        Supported Devices:
-        - Redmi Note 9S (miatoll/curtana)
-        - Redmi Note 9 Pro (miatoll/joyeuse) 
-        - Redmi Note 9 Pro Max (miatoll/excalibur)
-        - Poco M2 Pro (miatoll/gram)
+Supported Devices:
+- Redmi Note 9S (miatoll/curtana)
+- Redmi Note 9 Pro (miatoll/joyeuse) 
+- Redmi Note 9 Pro Max (miatoll/excalibur)
+- Poco M2 Pro (miatoll/gram)
 
-        Features:
-        ✅ KernelSU Next - Advanced root management
-        ✅ SUSFS - SU hiding filesystem  
-        ✅ Evolution-X optimizations
-        ✅ Built with latest toolchain
+Features:
+✅ KernelSU Next - Advanced root management
+✅ SUSFS - SU hiding filesystem  
+✅ Evolution-X optimizations
+✅ Built with latest toolchain
 
-        Installation:
-        1. Download this ZIP file
-        2. Boot into TWRP recovery
-        3. Flash this ZIP (no need to wipe)
-        4. Reboot system
-        5. Install KernelSU Next manager app
-        6. Enjoy!
+Installation:
+1. Download this ZIP file
+2. Boot into TWRP recovery
+3. Flash this ZIP (no need to wipe)
+4. Reboot system
+5. Install KernelSU Next manager app
+6. Enjoy!
 
-        Warning:
-        - Requires Evolution-X ROM
-        - Always backup current boot image
-        - Use at your own risk
+Warning:
+- Requires Evolution-X ROM
+- Always backup current boot image
+- Use at your own risk
 
-        Built automatically by GitHub Actions
-        EOF
+Built automatically by GitHub Actions
+EOFBUILD
         
         # Create the flashable ZIP
         ZIP_NAME="Evolution-X-Kernel-KernelSU-SUSFS-$(date +'%Y%m%d_%H%M').zip"
@@ -337,33 +351,33 @@ jobs:
         ls -la output/
         
         # Create installation instructions
-        cat > output/INSTALLATION.txt << EOF
-        Installation Instructions
-        ========================
+        cat > output/INSTALLATION.txt << EOFINST
+Installation Instructions
+========================
 
-        Method 1 - AnyKernel3 ZIP (Recommended):
-        1. Download: $ZIP_NAME
-        2. Boot into TWRP recovery
-        3. Flash the ZIP file
-        4. Reboot system
-        5. Install KernelSU Next manager app
+Method 1 - AnyKernel3 ZIP (Recommended):
+1. Download: $ZIP_NAME
+2. Boot into TWRP recovery
+3. Flash the ZIP file
+4. Reboot system
+5. Install KernelSU Next manager app
 
-        Method 2 - Raw Image (Advanced):
-        1. Download: Image.gz-dtb
-        2. Boot into fastboot mode
-        3. Run: fastboot flash boot Image.gz-dtb
-        4. Reboot system
-        5. Install KernelSU Next manager app
+Method 2 - Raw Image (Advanced):
+1. Download: Image.gz-dtb
+2. Boot into fastboot mode
+3. Run: fastboot flash boot Image.gz-dtb
+4. Reboot system
+5. Install KernelSU Next manager app
 
-        Compatibility:
-        - Evolution-X ROM required
-        - Android 11-14 supported
-        - Xiaomi SM6250 devices (miatoll family)
+Compatibility:
+- Evolution-X ROM required
+- Android 11-14 supported
+- Xiaomi SM6250 devices (miatoll family)
 
-        Support:
-        - Check build_info.txt for details
-        - Review build.log for troubleshooting
-        EOF
+Support:
+- Check build_info.txt for details
+- Review build.log for troubleshooting
+EOFINST
 
     - name: Verify Build Output
       if: steps.changes.outputs.should_build == 'true'
@@ -403,8 +417,8 @@ jobs:
           
           **🎯 Target Device:** Xiaomi SM6250 (miatoll)  
           **📅 Build Date:** ${{ steps.date.outputs.readable_date }}  
-          **🔧 KernelSU Version:** ${{ github.event.inputs.kernelsu_version || 'v1.0.5' }}  
-          **🌿 Kernel Branch:** ${{ github.event.inputs.kernel_branch || 'bka' }}  
+          **🔧 KernelSU Version:** ${{ steps.vars.outputs.ksu_version }}  
+          **🌿 Kernel Branch:** ${{ steps.vars.outputs.kernel_branch }}  
           **🔄 Build Reason:** ${{ steps.changes.outputs.reason }}
           
           ### ✨ Features
@@ -476,7 +490,7 @@ jobs:
           echo "1. 🏷️ Release: Check the Releases section of your repository"
           echo "2. 📎 Artifacts: Download from the Actions run page"
           echo ""
-          echo "🔥 Ready-to-flash AnyKernel3 ZIP: $(ls output/*.zip | head -1 | xargs basename 2>/dev/null || echo 'Check output directory')"
+          echo "🔥 Ready-to-flash AnyKernel3 ZIP available in output directory"
           echo "⚡ Raw kernel image: Image.gz-dtb"
           echo ""
           echo "🔗 Installation:"
