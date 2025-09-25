@@ -1,0 +1,508 @@
+name: Build Evolution-X Kernel with KernelSU Next + SUSFS
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernelsu_version:
+        description: 'KernelSU Next Version'
+        required: false
+        default: 'v1.0.5'
+        type: choice
+        options:
+          - 'v1.0.5'
+          - 'v1.0.4'
+          - 'v1.0.3'
+          - 'latest'
+      kernel_branch:
+        description: 'Kernel Branch'
+        required: false
+        default: 'bka'
+        type: choice
+        options:
+          - 'bka'
+          - 'main'
+      force_build:
+        description: 'Force build even if no changes detected'
+        required: false
+        default: false
+        type: boolean
+
+  push:
+    paths:
+      - '.github/workflows/build-kernel.yml'
+      - 'patches/**'
+      - 'custom-config/**'
+    branches: [ main ]
+
+env:
+  KERNEL_REPO: "https://github.com/Evolution-X-Devices/kernel_xiaomi_sm6250"
+  DOCKER_IMAGE: "ghcr.io/tedomi2705/kernel_builder_image:latest"
+  DEVICE_NAME: "miatoll"
+  
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Get Current Date
+      id: date
+      run: |
+        echo "date=$(date +'%Y%m%d_%H%M')" >> $GITHUB_OUTPUT
+        echo "readable_date=$(date +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_OUTPUT
+
+    - name: Set Variables
+      id: vars
+      run: |
+        echo "ksu_version=${{ github.event.inputs.kernelsu_version || 'v1.0.5' }}" >> $GITHUB_OUTPUT
+        echo "kernel_branch=${{ github.event.inputs.kernel_branch || 'bka' }}" >> $GITHUB_OUTPUT
+        echo "force_build=${{ github.event.inputs.force_build || 'false' }}" >> $GITHUB_OUTPUT
+
+    - name: Download Previous Build State
+      continue-on-error: true
+      uses: actions/download-artifact@v4
+      with:
+        name: build-state
+        path: .
+
+    - name: Check for Changes
+      id: changes
+      run: |
+        echo "🔍 Checking for changes in kernel and KernelSU repositories..."
+        
+        if [ "${{ steps.vars.outputs.force_build }}" = "true" ]; then
+          echo "⚡ Force build requested - skipping change detection"
+          echo "should_build=true" >> $GITHUB_OUTPUT
+          echo "reason=Force build requested by user" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Get current commit hashes
+        KERNEL_COMMIT=$(git ls-remote $KERNEL_REPO refs/heads/${{ steps.vars.outputs.kernel_branch }} | cut -f1)
+        KSU_COMMIT=$(git ls-remote https://github.com/rifsxd/KernelSU-Next refs/heads/next | cut -f1)
+        SUSFS_COMMIT=$(git ls-remote https://github.com/rifsxd/KernelSU-Next refs/heads/next-susfs | cut -f1)
+        
+        echo "📊 Current commits:"
+        echo "Kernel: $KERNEL_COMMIT"
+        echo "KernelSU Next: $KSU_COMMIT"
+        echo "SUSFS: $SUSFS_COMMIT"
+        
+        # Check if we have previous build info
+        LAST_BUILD_FILE="last_build_commits.txt"
+        if [ -f "$LAST_BUILD_FILE" ]; then
+          echo "📋 Comparing with last build..."
+          LAST_KERNEL=$(grep "KERNEL=" "$LAST_BUILD_FILE" | cut -d= -f2 || echo "")
+          LAST_KSU=$(grep "KSU=" "$LAST_BUILD_FILE" | cut -d= -f2 || echo "")
+          LAST_SUSFS=$(grep "SUSFS=" "$LAST_BUILD_FILE" | cut -d= -f2 || echo "")
+          
+          CHANGES_DETECTED=false
+          CHANGE_REASON=""
+          
+          if [ "$KERNEL_COMMIT" != "$LAST_KERNEL" ]; then
+            CHANGES_DETECTED=true
+            CHANGE_REASON="Evolution-X kernel updated"
+            echo "🔄 Kernel changes detected"
+          fi
+          
+          if [ "$KSU_COMMIT" != "$LAST_KSU" ]; then
+            CHANGES_DETECTED=true
+            if [ -n "$CHANGE_REASON" ]; then
+              CHANGE_REASON="$CHANGE_REASON, KernelSU Next updated"
+            else
+              CHANGE_REASON="KernelSU Next updated"
+            fi
+            echo "🔄 KernelSU Next changes detected"
+          fi
+          
+          if [ "$SUSFS_COMMIT" != "$LAST_SUSFS" ]; then
+            CHANGES_DETECTED=true
+            if [ -n "$CHANGE_REASON" ]; then
+              CHANGE_REASON="$CHANGE_REASON, SUSFS updated"
+            else
+              CHANGE_REASON="SUSFS updated"
+            fi
+            echo "🔄 SUSFS changes detected"
+          fi
+          
+          if [ "$CHANGES_DETECTED" = "true" ]; then
+            echo "✅ Changes detected: $CHANGE_REASON"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "reason=$CHANGE_REASON" >> $GITHUB_OUTPUT
+          else
+            echo "ℹ️ No changes detected since last build"
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "reason=No changes detected" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "🆕 No previous build found - proceeding with first build"
+          echo "should_build=true" >> $GITHUB_OUTPUT
+          echo "reason=First build" >> $GITHUB_OUTPUT
+        fi
+        
+        # Save current commits for next run
+        cat > "$LAST_BUILD_FILE" << EOF
+        KERNEL=$KERNEL_COMMIT
+        KSU=$KSU_COMMIT
+        SUSFS=$SUSFS_COMMIT
+        BUILD_DATE=$(date)
+        EOF
+        
+        # Upload the commit tracking file as artifact for persistence
+        mkdir -p build_state
+        cp "$LAST_BUILD_FILE" build_state/
+
+    - name: Skip Build
+      if: steps.changes.outputs.should_build == 'false'
+      run: |
+        echo "⏭️ Skipping build: ${{ steps.changes.outputs.reason }}"
+        echo "💡 To force a build, use the 'Force build' option in manual trigger"
+
+    - name: Clone Kernel Source
+      if: steps.changes.outputs.should_build == 'true'
+      run: |
+        echo "📥 Cloning kernel source..."
+        echo "📋 Build reason: ${{ steps.changes.outputs.reason }}"
+        git clone --depth=1 --branch=${{ steps.vars.outputs.kernel_branch }} $KERNEL_REPO kernel_source
+        cd kernel_source
+        echo "📊 Kernel version: $(make kernelversion)"
+        echo "📊 Commit: $(git rev-parse --short HEAD)"
+        echo "📅 Last commit: $(git log -1 --format='%cd' --date=short)"
+
+    - name: Integrate KernelSU Next + SUSFS and Build
+      if: steps.changes.outputs.should_build == 'true'
+      run: |
+        echo "🔧 Starting integration and build in Docker container..."
+        
+        KSU_VERSION="${{ steps.vars.outputs.ksu_version }}"
+        
+        docker run --rm \
+          -v "$PWD/kernel_source:/workspace/kernel" \
+          -v "$PWD/output:/workspace/output" \
+          -w /workspace/kernel \
+          $DOCKER_IMAGE \
+          bash -c "
+            set -e
+            mkdir -p /workspace/output
+            
+            echo '🎯 Integrating KernelSU Next...'
+            curl -LSs 'https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh' | bash -s $KSU_VERSION
+            
+            echo '🛡️ Integrating SUSFS...'
+            curl -LSs 'https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh' | bash -s next-susfs
+            
+            echo '⚙️ Configuring kernel for Evolution-X...'
+            
+            # Backup original config
+            cp arch/arm64/configs/miatoll_defconfig arch/arm64/configs/miatoll_defconfig.backup
+            
+            # Add KernelSU configurations
+            cat >> arch/arm64/configs/miatoll_defconfig << 'EOFCONFIG'
+
+# KernelSU Next Configuration
+CONFIG_KPROBES=y
+CONFIG_HAVE_KPROBES=y
+CONFIG_KPROBE_EVENTS=y
+CONFIG_MODULES=y
+CONFIG_MODULE_UNLOAD=y
+CONFIG_MODVERSIONS=y
+
+# SUSFS Configuration (if available)
+CONFIG_SUSFS=y
+CONFIG_SUSFS_SUSPICIOUS_PROC_PATH=y
+EOFCONFIG
+            
+            echo '🏗️ Building kernel...'
+            export ARCH=arm64
+            export SUBARCH=arm64
+            export KBUILD_BUILD_USER=EvolutionX-Auto
+            export KBUILD_BUILD_HOST=GitHub-Actions
+            
+            # Clean and build
+            make clean
+            make mrproper
+            make miatoll_defconfig
+            make -j\$(nproc) 2>&1 | tee /workspace/output/build.log
+            
+            # Verify build success
+            if [ -f 'arch/arm64/boot/Image.gz-dtb' ]; then
+              echo '✅ Build successful!'
+              
+              # Copy kernel image for raw download
+              cp arch/arm64/boot/Image.gz-dtb /workspace/output/
+              
+              # Copy final config
+              cp .config /workspace/output/kernel.config
+              
+              echo '📦 Kernel image ready, creating AnyKernel3 flashable ZIP...'
+            else
+              echo '❌ Build failed - no kernel image found!'
+              exit 1
+            fi
+          "
+
+    - name: Create AnyKernel3 Flashable ZIP
+      if: steps.changes.outputs.should_build == 'true'
+      run: |
+        echo "📦 Creating AnyKernel3 flashable ZIP..."
+        
+        # Clone AnyKernel3 template
+        git clone https://github.com/osm0sis/AnyKernel3 anykernel3
+        cd anykernel3
+        
+        # Remove example kernel
+        rm -f Image.gz-dtb zImage
+        
+        # Copy our kernel
+        cp ../output/Image.gz-dtb .
+        
+        # Create custom anykernel.sh for Evolution-X miatoll
+        cat > anykernel.sh << 'EOFAK3'
+# AnyKernel3 Ramdisk Mod Script
+# osm0sis @ xda-developers
+
+## AnyKernel setup
+# begin properties
+properties() { '
+kernel.string=Evolution-X Kernel with KernelSU Next + SUSFS
+do.devicecheck=1
+do.modules=0
+do.systemless=1
+do.cleanup=1
+do.cleanuponabort=0
+device.name1=miatoll
+device.name2=curtana
+device.name3=excalibur
+device.name4=gram
+device.name5=joyeuse
+supported.versions=11-14
+supported.patchlevels=
+'; } # end properties
+
+# shell variables
+block=boot;
+is_slot_device=1;
+ramdisk_compression=auto;
+patch_vbmeta_flag=auto;
+
+## AnyKernel methods (DO NOT CHANGE)
+# import patching functions/variables - see for reference
+. tools/ak3-core.sh;
+
+## AnyKernel file attributes
+# set permissions/ownership for included ramdisk files
+set_perm_recursive 0 0 755 644 $ramdisk/*;
+set_perm_recursive 0 0 750 750 $ramdisk/init* $ramdisk/sbin;
+
+## AnyKernel boot install
+dump_boot;
+write_boot;
+## end boot install
+EOFAK3
+        
+        # Create build info for the ZIP
+        cat > build_info.txt << EOFBUILD
+Evolution-X Kernel with KernelSU Next + SUSFS
+==============================================
+
+Build Date: $(date)
+Target Device: Xiaomi SM6250 (miatoll family)
+ROM: Evolution-X
+KernelSU Version: ${{ steps.vars.outputs.ksu_version }}
+SUSFS: Integrated (next-susfs)
+
+Supported Devices:
+- Redmi Note 9S (miatoll/curtana)
+- Redmi Note 9 Pro (miatoll/joyeuse) 
+- Redmi Note 9 Pro Max (miatoll/excalibur)
+- Poco M2 Pro (miatoll/gram)
+
+Features:
+✅ KernelSU Next - Advanced root management
+✅ SUSFS - SU hiding filesystem  
+✅ Evolution-X optimizations
+✅ Built with latest toolchain
+
+Installation:
+1. Download this ZIP file
+2. Boot into TWRP recovery
+3. Flash this ZIP (no need to wipe)
+4. Reboot system
+5. Install KernelSU Next manager app
+6. Enjoy!
+
+Warning:
+- Requires Evolution-X ROM
+- Always backup current boot image
+- Use at your own risk
+
+Built automatically by GitHub Actions
+EOFBUILD
+        
+        # Create the flashable ZIP
+        ZIP_NAME="Evolution-X-Kernel-KernelSU-SUSFS-$(date +'%Y%m%d_%H%M').zip"
+        zip -r9 "../output/$ZIP_NAME" . -x .git README.md .gitignore
+        
+        cd ..
+        echo "✅ AnyKernel3 ZIP created: $ZIP_NAME"
+        echo "📦 Files in output directory:"
+        ls -la output/
+        
+        # Create installation instructions
+        cat > output/INSTALLATION.txt << EOFINST
+Installation Instructions
+========================
+
+Method 1 - AnyKernel3 ZIP (Recommended):
+1. Download: $ZIP_NAME
+2. Boot into TWRP recovery
+3. Flash the ZIP file
+4. Reboot system
+5. Install KernelSU Next manager app
+
+Method 2 - Raw Image (Advanced):
+1. Download: Image.gz-dtb
+2. Boot into fastboot mode
+3. Run: fastboot flash boot Image.gz-dtb
+4. Reboot system
+5. Install KernelSU Next manager app
+
+Compatibility:
+- Evolution-X ROM required
+- Android 11-14 supported
+- Xiaomi SM6250 devices (miatoll family)
+
+Support:
+- Check build_info.txt for details
+- Review build.log for troubleshooting
+EOFINST
+
+    - name: Verify Build Output
+      if: steps.changes.outputs.should_build == 'true'
+      run: |
+        echo "🔍 Verifying build output..."
+        if [ -f "output/Image.gz-dtb" ]; then
+          echo "✅ Raw kernel image: $(ls -lh output/Image.gz-dtb)"
+          echo "📦 AnyKernel3 ZIP: $(ls -lh output/*.zip)"
+          echo "📄 Installation guide: $(ls -lh output/INSTALLATION.txt)"
+          echo "📋 Config file: $(ls -lh output/kernel.config)"
+          echo ""
+          echo "📊 Available downloads:"
+          echo "1. 📦 AnyKernel3 ZIP (recommended) - Flash directly in TWRP"
+          echo "2. 🖼️ Raw kernel image - For fastboot or advanced users"
+          echo "3. 📋 Build logs and configs - For debugging"
+        else
+          echo "❌ Build verification failed!"
+          exit 1
+        fi
+
+    - name: Upload Build State
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-state
+        path: build_state/
+        retention-days: 90
+
+    - name: Create Release
+      if: steps.changes.outputs.should_build == 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: "kernel-${{ steps.date.outputs.date }}"
+        name: "Evolution-X Kernel with KernelSU Next + SUSFS (${{ steps.date.outputs.readable_date }})"
+        body: |
+          ## Evolution-X Kernel Build
+          
+          **🎯 Target Device:** Xiaomi SM6250 (miatoll)  
+          **📅 Build Date:** ${{ steps.date.outputs.readable_date }}  
+          **🔧 KernelSU Version:** ${{ steps.vars.outputs.ksu_version }}  
+          **🌿 Kernel Branch:** ${{ steps.vars.outputs.kernel_branch }}  
+          **🔄 Build Reason:** ${{ steps.changes.outputs.reason }}
+          
+          ### ✨ Features
+          - ✅ KernelSU Next integrated
+          - ✅ SUSFS (SU hiding) integrated  
+          - ✅ Evolution-X optimizations
+          - ✅ Built with latest toolchain
+          
+          ### 📱 Compatible Devices
+          - Redmi Note 9S (curtana/miatoll)
+          - Redmi Note 9 Pro (joyeuse/miatoll)
+          - Redmi Note 9 Pro Max (excalibur/miatoll)
+          - Poco M2 Pro (gram/miatoll)
+          
+          ### 📥 Installation Options
+          
+          **🔥 Method 1 - AnyKernel3 ZIP (Recommended):**
+          1. Download `Evolution-X-Kernel-KernelSU-SUSFS-*.zip` below
+          2. Boot into TWRP recovery
+          3. Flash the ZIP (no wipe needed)
+          4. Reboot system
+          5. Install KernelSU Next manager app
+          
+          **⚡ Method 2 - Raw Image (Advanced):**
+          1. Download `Image.gz-dtb` below  
+          2. Boot into fastboot mode
+          3. Run: `fastboot flash boot Image.gz-dtb`
+          4. Reboot system
+          5. Install KernelSU Next manager app
+          
+          ### ⚠️ Important Notes
+          - Requires Evolution-X ROM
+          - Always backup your current kernel
+          - Use at your own risk
+          
+          ---
+          *Built automatically by GitHub Actions* 🤖
+        files: |
+          output/*.zip
+          output/Image.gz-dtb
+          output/INSTALLATION.txt
+          output/build.log
+          output/kernel.config
+        draft: false
+        prerelease: false
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload Build Artifacts
+      if: steps.changes.outputs.should_build == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: Evolution-X-Kernel-KernelSU-SUSFS-${{ steps.date.outputs.date }}
+        path: |
+          output/*.zip
+          output/Image.gz-dtb
+          output/INSTALLATION.txt
+          output/build.log
+          output/kernel.config
+        retention-days: 30
+
+    - name: Build Summary
+      if: always()
+      run: |
+        if [ "${{ steps.changes.outputs.should_build }}" = "true" ]; then
+          echo "🎉 Build completed successfully!"
+          echo "📋 Reason: ${{ steps.changes.outputs.reason }}"
+          echo ""
+          echo "📦 Download Options:"
+          echo "1. 🏷️ Release: Check the Releases section of your repository"
+          echo "2. 📎 Artifacts: Download from the Actions run page"
+          echo ""
+          echo "🔥 Ready-to-flash AnyKernel3 ZIP available in output directory"
+          echo "⚡ Raw kernel image: Image.gz-dtb"
+          echo ""
+          echo "🔗 Installation:"
+          echo "📦 AnyKernel3 ZIP: Flash directly in TWRP (recommended)"
+          echo "🖼️ Raw Image: Use with fastboot (advanced users)"
+          echo ""
+          echo "📱 After flashing: Install KernelSU Next manager app and enjoy!"
+        else
+          echo "⏭️ Build skipped: ${{ steps.changes.outputs.reason }}"
+          echo ""
+          echo "💡 To trigger a build:"
+          echo "1. Wait for kernel or KernelSU updates"
+          echo "2. Use 'Run workflow' with 'Force build' option"
+          echo "3. Push changes to workflow files or patches"
+        fi
