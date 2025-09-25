@@ -37,5 +37,5 @@
 ✅ Zero local setup required  
 ✅ Automatic weekly updates  
 
----
+----
 *No downloads, no builds, just grab and flash!* ⚡
