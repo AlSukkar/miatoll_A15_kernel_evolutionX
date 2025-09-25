@@ -48,7 +48,8 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           max-size: 7G
-
+      - name: Prepare Build Scripts
+        run: chmod +x build.sh
       - name: 🛠️ Build the kramel
         run: |
           ./build.sh miatoll
