@@ -1,12 +1,8 @@
 #!/bin/bash
 
-# Usage: ./build.sh <device_codename>
+# Always build for Miatoll
 
-DEVICE_CODENAME=$1
-if [ -z "$DEVICE_CODENAME" ]; then
-    echo "Error: Device codename not provided"
-    exit 1
-fi
+DEVICE_CODENAME="miatoll"
 
 cd kernel_xiaomi_sm6250
 
