@@ -1,0 +1,20 @@
+name: Add KernelSU-Next Submodule
+
+on:
+  workflow_dispatch:
+
+jobs:
+  add-submodule:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Add KernelSU-Next
+        run: |
+          git submodule add https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU-Next || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add KernelSU-Next
+          git commit -m "Add KernelSU-Next submodule" || echo "No changes to commit"
+          git push
