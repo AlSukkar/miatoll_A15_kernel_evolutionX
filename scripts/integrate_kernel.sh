@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
-
+# Mark repo as safe for Git
+git config --global --add safe.directory /workspace/kernel_source
 # Kernel Integration and Build Script
 # This runs inside the Docker container
 
@@ -19,9 +20,6 @@ cd /workspace/kernel_source
 
 echo "🎯 Integrating KernelSU Next..."
 curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s "$KSU_VERSION"
-
-echo "🛡️ Integrating SUSFS..."
-curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s "next-susfs"
 
 echo "⚙️ Applying kernel configuration..."
 
