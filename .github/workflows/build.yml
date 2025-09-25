@@ -1,13 +1,19 @@
 name: Build KernelSU-Next for MiAtoll
 
 on:
+  workflow_dispatch:
+    inputs:
+      ksu_next_ref:
+        description: "KernelSU-Next ref (branch or tag) (e.g. main, next, v1.0.8)"
+        required: false
+        default: "main"
+
   push:
     branches:
       - miatoll
   pull_request:
     branches:
       - miatoll
-  workflow_dispatch:
 
 jobs:
   build:
@@ -15,16 +21,20 @@ jobs:
     container: ghcr.io/tedomi2705/kernel_builder_image:latest
 
     steps:
-      - name: 📂 Checkout builder's sourcecode and get files
+      - name: 📂 Checkout builder's sourcecode
         uses: actions/checkout@v4
- 
-      - name: ⚡ Checkout kernel's sourcecode and clone submodules
+
+      - name: ⚡ Checkout kernel's sourcecode
         run: |
           git clone --depth=1 https://github.com/Evolution-x-devices/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b vic
 
-      - name: 📅 Export date of build
+      - name: 📥 Clone KernelSU-Next
         run: |
-          echo "DATE=$(date +%d%m%Y)" >> $GITHUB_ENV
+          cd kernel_xiaomi_sm6250
+          git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next.git -b "${{ github.event.inputs.ksu_next_ref }}" KernelSU-Next
+
+      - name: 📅 Export build date
+        run: echo "DATE=$(date +%d%m%Y)" >> $GITHUB_ENV
 
       - name: 📥 Clone AnyKernel3
         run: |
@@ -32,81 +42,53 @@ jobs:
           git clone -b miatoll --depth=1 https://github.com/Oneloutre/AnyKernel3.git anykernel
           rm -rf anykernel/.git
 
-      - name: 🔍 Device's codename and kernel's version
+      - name: 🔍 Kernel info
         run: |
           cd kernel_xiaomi_sm6250
           DEVICE_CODENAME=miatoll
           KERNEL_VERSION=$(make kernelversion)
 
-          echo "Device Codename: $DEVICE_CODENAME"
-          echo "Kernel Version: $KERNEL_VERSION"
-
           echo "DEVICE_CODENAME=$DEVICE_CODENAME" >> $GITHUB_ENV
           echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
 
-      - name: 🚀 Enable ccache to speed the build up
+      - name: 🚀 Enable ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           max-size: 7G
 
-      - name: 🛠️ Build the kramel
+      - name: 🛠️ Build the kernel
         run: |
+          export KSU_NEXT_REF="${{ github.event.inputs.ksu_next_ref }}"
           ./build.sh miatoll
 
-      - name: 🚀 Copy the compiled kernel to AnyKernel3 then create the zip
+      - name: 🚀 Pack AnyKernel3
         run: |
           cd kernel_xiaomi_sm6250
-          ZIP_NAME="Kernel-Caelum-${DEVICE_CODENAME}-${KERNEL_VERSION}-$(date +%d%m%Y).zip"
+          ZIP_NAME="Kernel-Caelum-${DEVICE_CODENAME}-${KERNEL_VERSION}-${DATE}.zip"
 
-          mkdir anykernel/dtb
-
+          mkdir -p anykernel/dtb
           cp out/arch/arm64/boot/Image.gz anykernel/
           cp out/arch/arm64/boot/dtbo.img anykernel/
           cp out/arch/arm64/boot/dtb.img anykernel/dtb
 
           cd anykernel && zip -r9 $ZIP_NAME ./*
           mv $ZIP_NAME ../../
-
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
-      - name: 🤌 Copy zip file to get 2 different zip files
+      - name: 🤌 Copy as alternative name
         run: |
-
           ZIP_ALTERNATIVE="KernelSU-Next-Caelum-${DEVICE_CODENAME}-latest.zip"
           cp ${ZIP_NAME} $ZIP_ALTERNATIVE
-
-          echo "Copied ${ZIP_NAME} as $ZIP_ALTERNATIVE"
           echo "ZIP_ALTERNATIVE=$ZIP_ALTERNATIVE" >> $GITHUB_ENV
-          
-      - name: 📤 Publish github release
+
+      - name: 📤 Publish release (latest)
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_ALTERNATIVE }}
           tag_name: "latest"
-          draft: false
-          prerelease: false
 
-      - name: 📤 Publish with tag associated to the kernel and the date
+      - name: 📤 Publish release (dated)
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_NAME }}
           tag_name: Kernel-Caelum-${{ env.DEVICE_CODENAME }}-${{ env.KERNEL_VERSION }}-${{ env.DATE }}
-          draft: false
-          prerelease: false
-
-  notification:
-    runs-on: ubuntu-22.04
-    needs: build
-    steps:
-
-      - name: 📂 Checkout builder's sourcecode and get files
-        uses: actions/checkout@v4
-
-      - name: 🚀 Notify people on Discord
-        env:
-          DEVICE_CODENAME: miatoll
-          KERNEL_VERSION: 4.14.336
-          WEBHOOK: ${{ secrets.WEBHOOK }}
-          NAME: Kernel-Caelum-miatoll-4.14.336.zip
-        run: |
-          python3 .github/webhook.py
