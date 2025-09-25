@@ -8,13 +8,6 @@ on:
         required: false
         default: "main"
 
-  push:
-    branches:
-      - miatoll
-  pull_request:
-    branches:
-      - miatoll
-
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -26,7 +19,7 @@ jobs:
 
       - name: ⚡ Checkout kernel's sourcecode
         run: |
-          git clone --depth=1 https://github.com/Evolution-x-devices/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b vic
+          git clone --depth=1 https://github.com/Evolution-x-devices/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b bka
 
       - name: 📥 Clone KernelSU-Next
         run: |
@@ -59,7 +52,7 @@ jobs:
       - name: 🛠️ Build the kernel
         run: |
           export KSU_NEXT_REF="${{ github.event.inputs.ksu_next_ref }}"
-          ./build.sh miatoll
+          ./build.sh
 
       - name: 🚀 Pack AnyKernel3
         run: |
