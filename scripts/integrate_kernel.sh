@@ -42,11 +42,17 @@ cp "$DEFCONFIG_SRC" "$DEFCONFIG_DST"
 
 echo "🏗️ Building kernel..."
 export CC=clang
-export CROSS_COMPILE=aarch64-linux-gnu-
 export LD=ld.lld
-export LLVM=1
+export AR=llvm-ar
+export NM=llvm-nm
+export OBJCOPY=llvm-objcopy
+export OBJDUMP=llvm-objdump
+export STRIP=llvm-strip
+export OBJSIZE=llvm-size
 export ARCH=arm64
 export SUBARCH=arm64
+export LLVM=1
+
 export KBUILD_BUILD_USER=EvolutionX-Auto
 export KBUILD_BUILD_HOST=GitHub-Actions
 
