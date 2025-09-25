@@ -76,8 +76,8 @@ if [ -f "arch/arm64/boot/Image.gz-dtb" ]; then
     echo "✅ Build successful!"
 
     # Copy outputs
-    cp arch/arm64/boot/Image.gz-dtb /workspace/output/
-    cp .config /workspace/output/kernel.config
+    cp out/arch/arm64/boot/Image.gz-dtb /workspace/output/
+    cp out/.config /workspace/output/kernel.config
 
     # Create build info
     cat > /workspace/output/build_info.txt << EOF
