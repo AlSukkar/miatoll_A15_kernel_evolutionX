@@ -51,6 +51,8 @@ jobs:
       - name: Prepare Build Scripts
         run: chmod +x build.sh
       - name: 🛠️ Build the kramel
+        env:
+          KSU_NEXT_REF: v1.1.1
         run: |
           ./build.sh miatoll
 
