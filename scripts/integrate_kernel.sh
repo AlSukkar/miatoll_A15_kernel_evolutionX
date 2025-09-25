@@ -41,6 +41,10 @@ cat /workspace/patches/kernel_config.patch >> "$DEFCONFIG_SRC"
 cp "$DEFCONFIG_SRC" "$DEFCONFIG_DST"
 
 echo "🏗️ Building kernel..."
+export CC=clang
+export CROSS_COMPILE=aarch64-linux-gnu-
+export LD=ld.lld
+export LLVM=1
 export ARCH=arm64
 export SUBARCH=arm64
 export KBUILD_BUILD_USER=EvolutionX-Auto
@@ -50,8 +54,7 @@ export KBUILD_BUILD_HOST=GitHub-Actions
 make mrproper
 make miatoll_defconfig
 make -j$(nproc) 2>&1 | tee /workspace/output/build.log
-scripts/config --disable CC_STACKPROTECTOR_STRONG
-make olddefconfig
+
 # Verify build success
 if [ -f "arch/arm64/boot/Image.gz-dtb" ]; then
     echo "✅ Build successful!"
