@@ -8,7 +8,19 @@ git config --global --add safe.directory /workspace/kernel_source
 echo "📋 Installing dependencies..."
 apt update
 apt install -y curl git bc bison flex libssl-dev make
+apt install -y wget
+wget https://github.com/llvm/llvm-project/releases/download/llvmorg-19.0.0/clang+llvm-19.0.0-x86_64-linux-gnu-ubuntu-22.04.tar.xz
+tar -xf clang+llvm-19.0.0-x86_64-linux-gnu-ubuntu-22.04.tar.xz -C /opt
+export PATH=/opt/clang+llvm-19.0.0-x86_64-linux-gnu-ubuntu-22.04/bin:$PATH
 
+# Set Clang as the compiler
+export CC=clang
+export LD=ld.lld
+export AR=llvm-ar
+export NM=llvm-nm
+export OBJCOPY=llvm-objcopy
+export OBJDUMP=llvm-objdump
+export STRIP=llvm-strip
 echo "🚀 Starting KernelSU Next + SUSFS integration..."
 echo "📋 KernelSU Version: $KSU_VERSION"
 
