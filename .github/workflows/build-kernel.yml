@@ -20,12 +20,13 @@ on:
 env:
   KERNEL_REPO: "https://github.com/Evolution-X-Devices/kernel_xiaomi_sm6250"
   DOCKER_IMAGE: "ghcr.io/tedomi2705/kernel_builder_image:latest"
-  
+  BUILD_DIR: out
+
 jobs:
   build:
     name: Build Kernel
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
@@ -42,10 +43,24 @@ jobs:
         echo "KERNEL_BRANCH=${{ github.event.inputs.kernel_branch || 'bka' }}" >> $GITHUB_ENV
         echo "FORCE_BUILD=${{ github.event.inputs.force_build || 'false' }}" >> $GITHUB_ENV
 
+    - name: Restore kernel build cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          out/
+          .ccache/
+        key: kernel-${{ env.KERNEL_BRANCH }}-${{ github.event.inputs.kernelsu_version }}-${{ github.sha }}
+        restore-keys: |
+          kernel-${{ env.KERNEL_BRANCH }}-${{ github.event.inputs.kernelsu_version }}-
+          kernel-${{ env.KERNEL_BRANCH }}-
+          kernel-
+
     - name: Clone Kernel Source
       run: |
-        echo "📥 Cloning kernel source..."
-        git clone --depth=1 --branch=$KERNEL_BRANCH $KERNEL_REPO kernel_source
+        if [ ! -d "kernel_source" ]; then
+          echo "📥 Cloning kernel source..."
+          git clone --depth=1 --branch=$KERNEL_BRANCH $KERNEL_REPO kernel_source
+        fi
         cd kernel_source
         echo "📊 Kernel version: $(make kernelversion)"
         echo "📊 Commit: $(git rev-parse --short HEAD)"
@@ -61,7 +76,9 @@ jobs:
         docker run --rm \
           -v "$PWD:/workspace" \
           -w /workspace \
+          -v "$PWD/.ccache:/root/.ccache" \
           -e KSU_VERSION="$KSU_VERSION" \
+          -e CCACHE_DIR="/root/.ccache" \
           $DOCKER_IMAGE \
           bash scripts/integrate_kernel.sh
 
@@ -73,7 +90,8 @@ jobs:
     - name: Verify Build Output
       run: |
         echo "🔍 Verifying build output..."
-        if [ -f "output/Image.gz-dtb" ] && [ -f "output"/*.zip ]; then
+        KERNEL_IMG="out/arch/arm64/boot/Image.gz-dtb"
+        if [ -f "$KERNEL_IMG" ] && [ -f "output"/*.zip ]; then
           echo "✅ Build successful!"
           echo "📦 Files created:"
           ls -la output/
