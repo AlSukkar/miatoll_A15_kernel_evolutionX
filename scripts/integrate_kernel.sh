@@ -1,11 +1,12 @@
 #!/bin/bash
+set -e
 
 # Kernel Integration and Build Script
 # This runs inside the Docker container
-sudo apt update
-sudo apt upgrade
-sudo apt install curl
-set -e
+
+echo "📋 Installing dependencies..."
+apt update
+apt install -y curl git bc bison flex libssl-dev make
 
 echo "🚀 Starting KernelSU Next + SUSFS integration..."
 echo "📋 KernelSU Version: $KSU_VERSION"
@@ -24,11 +25,22 @@ curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/ker
 
 echo "⚙️ Applying kernel configuration..."
 
-# Backup original config
-cp arch/arm64/configs/vendor/xiaomi/miatoll_defconfig arch/arm64/configs/vendor/xiaomi/miatoll_defconfig.backup
+# Backup original defconfig
+DEFCONFIG_SRC="arch/arm64/configs/vendor/xiaomi/miatoll_defconfig"
+DEFCONFIG_DST="arch/arm64/configs/miatoll_defconfig"
+
+if [ ! -f "$DEFCONFIG_SRC" ]; then
+    echo "❌ ERROR: Source defconfig not found: $DEFCONFIG_SRC"
+    exit 1
+fi
+
+cp "$DEFCONFIG_SRC" "${DEFCONFIG_SRC}.backup"
 
 # Apply kernel patches from file
-cat /workspace/patches/kernel_config.patch >> arch/arm64/configs/vendor/xiaomi/miatoll_defconfig
+cat /workspace/patches/kernel_config.patch >> "$DEFCONFIG_SRC"
+
+# Copy defconfig to expected location for make
+cp "$DEFCONFIG_SRC" "$DEFCONFIG_DST"
 
 echo "🏗️ Building kernel..."
 export ARCH=arm64
@@ -37,7 +49,6 @@ export KBUILD_BUILD_USER=EvolutionX-Auto
 export KBUILD_BUILD_HOST=GitHub-Actions
 
 # Clean and build
-make clean
 make mrproper
 make miatoll_defconfig
 make -j$(nproc) 2>&1 | tee /workspace/output/build.log
@@ -45,11 +56,11 @@ make -j$(nproc) 2>&1 | tee /workspace/output/build.log
 # Verify build success
 if [ -f "arch/arm64/boot/Image.gz-dtb" ]; then
     echo "✅ Build successful!"
-    
+
     # Copy outputs
     cp arch/arm64/boot/Image.gz-dtb /workspace/output/
     cp .config /workspace/output/kernel.config
-    
+
     # Create build info
     cat > /workspace/output/build_info.txt << EOF
 Evolution-X Kernel with KernelSU Next + SUSFS
@@ -89,7 +100,7 @@ Warning:
 - Always backup current boot image
 - Use at your own risk
 EOF
-    
+
     echo "📦 Kernel build completed successfully!"
 else
     echo "❌ Build failed - no kernel image found!"
