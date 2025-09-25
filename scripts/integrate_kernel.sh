@@ -23,10 +23,10 @@ curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/ker
 echo "⚙️ Applying kernel configuration..."
 
 # Backup original config
-cp arch/arm64/configs/miatoll_defconfig arch/arm64/configs/miatoll_defconfig.backup
+cp arch/arm64/configs/vendor/xiaomi/miatoll_defconfig arch/arm64/configs/vendor/xiaomi/miatoll_defconfig.backup
 
 # Apply kernel patches from file
-cat /workspace/patches/kernel_config.patch >> arch/arm64/configs/miatoll_defconfig
+cat /workspace/patches/kernel_config.patch >> arch/arm64/configs/vendor/xiaomi/miatoll_defconfig
 
 echo "🏗️ Building kernel..."
 export ARCH=arm64
