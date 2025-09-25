@@ -18,7 +18,7 @@ jobs:
 
       - name: ⚡ Checkout kernel code
         run: |
-          git clone --depth=1 https://github.com/Evolution-x-devices/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b vic
+          git clone --depth=1 https://github.com/Evolution-x-devices/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b bka
 
       - name: 🏷 Fetch latest KernelSU-Next release tag
         id: get_ksunext_tag
@@ -60,6 +60,8 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           max-size: 7G
+      - name: chmod
+        run: chmod +x build.sh
 
       - name: 🛠️ Build kernel
         run: |
