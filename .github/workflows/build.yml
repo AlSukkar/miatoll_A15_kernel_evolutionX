@@ -13,6 +13,8 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     container: ghcr.io/tedomi2705/kernel_builder_image:latest
+    permissions:
+     contents: write
 
     steps:
       - name: 📂 Checkout builder's sourcecode and get files
