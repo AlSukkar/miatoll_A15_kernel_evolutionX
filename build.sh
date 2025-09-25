@@ -1,41 +1,34 @@
 #!/bin/bash
 
-# Always build for Miatoll
-
+# Always build for miatoll
 DEVICE_CODENAME="miatoll"
 
 cd kernel_xiaomi_sm6250
 
-# ==== KernelSU-Next Integration ====
+# KernelSU-Next integration
 if [ -z "$KSU_NEXT_REF" ]; then
-    KSU_NEXT_REF="main"
+  echo "Error: KSU_NEXT_REF is not set"
+  exit 1
 fi
 
-echo "Integrating KernelSU-Next ($KSU_NEXT_REF)..."
-
-# Run KernelSU-Next setup script
+echo "Setting up KernelSU-Next version: $KSU_NEXT_REF"
 bash KernelSU-Next/kernel/setup.sh -s "$KSU_NEXT_REF"
 
-# Copy config fragment
 cp KernelSU-Next/kernel/kernelsu.config arch/arm64/configs/vendor/kernelsu.config
 
-# Ensure option in defconfig
 echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/vendor/xiaomi/${DEVICE_CODENAME}_defconfig
 
-# ==== Kernel build environment ====
 export ARCH=arm64
 export SUBARCH=arm64
-export KBUILD_COMPILER_STRING=$(clang --version | head -n 1)
+export KBUILD_COMPILER_STRING=$(clang --version | head -n1)
 export CCACHE_EXEC=$(which ccache)
 export KBUILD_BUILD_HOST="Caelum-Github-actions"
 export LLVM_IAS=1
 export CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE=y
 
-# Configure
 make O=out ARCH=arm64 vendor/xiaomi/${DEVICE_CODENAME}_defconfig vendor/kernelsu.config
 yes "" | make O=out ARCH=arm64 olddefconfig
 
-# Build
 make -j$(nproc --all) O=out \
     ARCH=arm64 \
     CC="ccache clang" \
