@@ -21,10 +21,11 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/Evolution-x-devices/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b bka
 
-      - name: 📥 Clone KernelSU-Next
+      - name: 📥 Update KernelSU-Next
         run: |
-          cd kernel_xiaomi_sm6250
-          git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next.git -b "${{ github.event.inputs.ksu_next_ref }}" KernelSU-Next
+          cd kernel_xiaomi_sm6250/KernelSU-Next
+          git fetch --tags origin "${{ github.event.inputs.ksu_next_ref }}"
+          git checkout FETCH_HEAD
 
       - name: 📅 Export build date
         run: echo "DATE=$(date +%d%m%Y)" >> $GITHUB_ENV
