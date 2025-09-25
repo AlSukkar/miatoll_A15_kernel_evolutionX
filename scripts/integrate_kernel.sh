@@ -41,30 +41,35 @@ cat /workspace/patches/kernel_config.patch >> "$DEFCONFIG_SRC"
 cp "$DEFCONFIG_SRC" "$DEFCONFIG_DST"
 
 echo "🏗️ Building kernel..."
-export PATH="/compiler/clang/python3/bin:/compiler/clang/bin:/compiler/aarch64-linux-android-4.9/bin:/compiler/arm-linux-androideabi-4.9/bin:${PATH}"
-export CCACHE_DIR="/ccache"
-export CCACHE_MAXSIZE="50G"
-export CCACHE_COMPRESS="1"
-
-export CC=clang
-export LD=ld.lld
-export AR=llvm-ar
-export NM=llvm-nm
-export OBJCOPY=llvm-objcopy
-export OBJDUMP=llvm-objdump
-export STRIP=llvm-strip
-export OBJSIZE=llvm-size
 export ARCH=arm64
 export SUBARCH=arm64
-export LLVM=1
+export KBUILD_COMPILER_STRING=$(clang --version | head -n 1)
+export CCACHE_EXEC=$(which ccache)
+export LLVM_IAS=1
+export CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE=y
 
 export KBUILD_BUILD_USER=EvolutionX-Auto
 export KBUILD_BUILD_HOST=GitHub-Actions
 
 # Clean and build
-make mrproper
-make miatoll_defconfig
-make -j$(nproc) 2>&1 | tee /workspace/output/build.log
+echo "CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE=y" >> arch/arm64/configs/vendor/xiaomi/miatoll_defconfig
+make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig vendor/kernelsu.config
+yes "" | make O=out ARCH=arm64 olddefconfig
+
+make -j$(nproc --all) O=out \
+    ARCH=arm64 \
+    CC="ccache clang" \
+    LD=ld.lld \
+    AR=llvm-ar \
+    NM=llvm-nm \
+    LLVM_IAS=1 \
+    STRIP=llvm-strip \
+    OBJCOPY=llvm-objcopy \
+    OBJDUMP=llvm-objdump \
+    CLANG_TRIPLE=aarch64-linux-gnu- \
+    CROSS_COMPILE=aarch64-linux-android- \
+    CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+    CROSS_COMPILE_COMPAT=arm-linux-androidkernel- 2>&1 | tee /workspace/output/build.log
 
 # Verify build success
 if [ -f "arch/arm64/boot/Image.gz-dtb" ]; then
