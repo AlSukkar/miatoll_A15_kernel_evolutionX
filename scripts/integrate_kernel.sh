@@ -41,6 +41,11 @@ cat /workspace/patches/kernel_config.patch >> "$DEFCONFIG_SRC"
 cp "$DEFCONFIG_SRC" "$DEFCONFIG_DST"
 
 echo "🏗️ Building kernel..."
+export PATH="/compiler/clang/python3/bin:/compiler/clang/bin:/compiler/aarch64-linux-android-4.9/bin:/compiler/arm-linux-androideabi-4.9/bin:${PATH}"
+export CCACHE_DIR="/ccache"
+export CCACHE_MAXSIZE="50G"
+export CCACHE_COMPRESS="1"
+
 export CC=clang
 export LD=ld.lld
 export AR=llvm-ar
