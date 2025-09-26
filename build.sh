@@ -22,10 +22,16 @@ export LLVM_IAS=1
 # 1. CRITICAL: Clean any old, incorrect configuration from the output directory.
 make O=out mrproper
 
-# 2. Merge the device defconfig and the KernelSU config to create the final build config.
-make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig vendor/kernelsu.config
+# 2. Manually merge your two config files into a single temporary file. This is the key fix.
+cat arch/arm64/configs/vendor/xiaomi/miatoll_defconfig arch/arm64/configs/vendor/kernelsu.config > arch/arm64/configs/merged_defconfig
 
-# 3. Finalize the config, accepting defaults for any new options.
+# 3. Use the SINGLE merged config file to create the build configuration.
+make O=out ARCH=arm64 merged_defconfig
+
+# 4. Clean up the temporary merged file.
+rm arch/arm64/configs/merged_defconfig
+
+# 5. Finalize the config, accepting defaults for any new options.
 yes "" | make O=out ARCH=arm64 olddefconfig
 
 # --- VERIFY CONFIGURATION ---
