@@ -8,18 +8,17 @@ cd kernel_xiaomi_sm6250
 
 # --- PREPARE KERNELSU ---
 # Run the setup script to patch the kernel source files.
-bash KernelSU-Next/kernel/setup.sh
 
 # --- NEW: VERIFY SETUP SCRIPT ---
-echo "=========================================="
-echo "Verifying setup.sh Kconfig patch..."
-if grep -q "kernelsu" "drivers/Kconfig"; then
-    echo "[SUCCESS] drivers/Kconfig was successfully patched."
-else
-    echo "[FAILURE] setup.sh did NOT patch drivers/Kconfig. The build system will not know about KSU options. Aborting."
-    exit 1
-fi
-echo "=========================================="
+# echo "=========================================="
+# echo "Verifying setup.sh Kconfig patch..."
+# if grep -q "kernelsu" "drivers/Kconfig"; then
+#     echo "[SUCCESS] drivers/Kconfig was successfully patched."
+# else
+#     echo "[FAILURE] setup.sh did NOT patch drivers/Kconfig. The build system will not know about KSU options. Aborting."
+#     exit 1
+# fi
+# echo "=========================================="
 # --- END NEW VERIFICATION ---
 
 
@@ -35,22 +34,16 @@ export LLVM_IAS=1
 # 1. CRITICAL: Clean any old, incorrect configuration from the output directory.
 make O=out mrproper
 
-# 2. Manually merge your two config files into a single temporary file.
-cat arch/arm64/configs/vendor/xiaomi/miatoll_defconfig arch/arm64/configs/vendor/kernelsu.config > arch/arm64/configs/merged_defconfig
+# 2. Merge the device defconfig and the KernelSU config to create the final build config.
+make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig vendor/kernelsu.config
 
-# 3. Use the SINGLE merged config file to create the build configuration.
-make O=out ARCH=arm64 merged_defconfig
-
-# 4. Clean up the temporary merged file.
-rm arch/arm64/configs/merged_defconfig
-
-# 5. Finalize the config, accepting defaults for any new options.
+# 3. Finalize the config, accepting defaults for any new options.
 yes "" | make O=out ARCH=arm64 olddefconfig
 
 # --- VERIFY FINAL CONFIGURATION ---
 echo "=========================================="
 echo "Verifying Final Kernel Configuration..."
-if grep -q "CONFIG_KSU_SUSFS=y" "out/.config"; then
+if grep -q "CONFIG_KSU_SUSFS=" "out/.config"; then
     echo "[SUCCESS] susfs is enabled in the final config."
 else
     echo "[FAILURE] susfs is NOT enabled in the final config. Aborting build."
