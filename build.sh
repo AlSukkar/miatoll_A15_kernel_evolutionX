@@ -36,7 +36,8 @@ make O=out mrproper
 
 # 2. Merge the device defconfig and the KernelSU config to create the final build config.
 make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig vendor/kernelsu.config
-
+echo "CONFIG_KSU=y" >> out/.config
+echo "CONFIG_KSU_SUSFS=y" >> out/.config
 # 3. Finalize the config, accepting defaults for any new options.
 yes "" | make O=out ARCH=arm64 olddefconfig
 
