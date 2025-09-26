@@ -16,7 +16,7 @@ export ARCH=arm64
 export SUBARCH=arm64
 export KBUILD_COMPILER_STRING=$(clang --version | head -n1)
 export CCACHE_EXEC=$(which ccache)
-export KBUILD_BUILD_HOST="Caelum-Github"
+export KBUILD_BUILD_HOST="Github"
 export LLVM_IAS=1
 
 # --- CONFIGURE KERNEL ---
