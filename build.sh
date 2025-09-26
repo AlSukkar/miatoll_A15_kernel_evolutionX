@@ -10,6 +10,19 @@ cd kernel_xiaomi_sm6250
 # Run the setup script to patch the kernel source files.
 bash KernelSU-Next/kernel/setup.sh
 
+# --- NEW: VERIFY SETUP SCRIPT ---
+echo "=========================================="
+echo "Verifying setup.sh Kconfig patch..."
+if grep -q "kernelsu" "drivers/Kconfig"; then
+    echo "[SUCCESS] drivers/Kconfig was successfully patched."
+else
+    echo "[FAILURE] setup.sh did NOT patch drivers/Kconfig. The build system will not know about KSU options. Aborting."
+    exit 1
+fi
+echo "=========================================="
+# --- END NEW VERIFICATION ---
+
+
 # --- SET UP BUILD ENVIRONMENT ---
 export ARCH=arm64
 export SUBARCH=arm64
@@ -22,7 +35,7 @@ export LLVM_IAS=1
 # 1. CRITICAL: Clean any old, incorrect configuration from the output directory.
 make O=out mrproper
 
-# 2. Manually merge your two config files into a single temporary file. This is the key fix.
+# 2. Manually merge your two config files into a single temporary file.
 cat arch/arm64/configs/vendor/xiaomi/miatoll_defconfig arch/arm64/configs/vendor/kernelsu.config > arch/arm64/configs/merged_defconfig
 
 # 3. Use the SINGLE merged config file to create the build configuration.
@@ -34,7 +47,7 @@ rm arch/arm64/configs/merged_defconfig
 # 5. Finalize the config, accepting defaults for any new options.
 yes "" | make O=out ARCH=arm64 olddefconfig
 
-# --- VERIFY CONFIGURATION ---
+# --- VERIFY FINAL CONFIGURATION ---
 echo "=========================================="
 echo "Verifying Final Kernel Configuration..."
 if grep -q "CONFIG_KSU_SUSFS=y" "out/.config"; then
