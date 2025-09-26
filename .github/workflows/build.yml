@@ -24,9 +24,9 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/AlSukkar/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b bka
       - name: ⚡ Clone KernelSU-Next source
-        run: |
-          cd kernel_xiaomi_sm6250
-          git clone --depth=1 -b v1.1.1 https://github.com/KernelSU-Next/KernelSU-Next KernelSU-Next
+        # run: |
+        #   cd kernel_xiaomi_sm6250
+        #   git clone --depth=1 -b v1.1.1 https://github.com/KernelSU-Next/KernelSU-Next KernelSU-Next
       - name: 📅 Export date of build
         run: |
           echo "DATE=$(date +%d%m%Y)" >> $GITHUB_ENV
