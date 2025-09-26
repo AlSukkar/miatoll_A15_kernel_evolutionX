@@ -7,12 +7,9 @@ DEVICE_CODENAME="miatoll"
 cd kernel_xiaomi_sm6250
 
 # --- PREPARE KERNELSU ---
-# Run the setup script to patch the kernel source.
-# We run it without arguments because the workflow has already checked out the correct version.
+# Run the setup script. Its only job is to patch the kernel source files.
+# We will ignore any config files it creates and use our own.
 bash KernelSU-Next/kernel/setup.sh
-
-# Copy the generated KernelSU config to the location our make command expects.
-cp KernelSU-Next/kernel/kernelsu.config arch/arm64/configs/vendor/kernelsu.config
 
 # --- SET UP BUILD ENVIRONMENT ---
 export ARCH=arm64
@@ -26,7 +23,8 @@ export LLVM_IAS=1
 # 1. CRITICAL: Clean any old, incorrect configuration from the output directory.
 make O=out mrproper
 
-# 2. Merge the device config and the KernelSU config to create the final build config.
+# 2. Merge your device defconfig and your custom kernelsu.config.
+#    This will use the kernelsu.config already present in your repository.
 make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig vendor/kernelsu.config
 
 # 3. Finalize the config, accepting defaults for any new options.
