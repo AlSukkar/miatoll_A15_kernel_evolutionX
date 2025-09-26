@@ -64,7 +64,7 @@ jobs:
       - name: 🚀 Copy the compiled kernel to AnyKernel3 then create the zip
         run: |
           cd kernel_xiaomi_sm6250
-          ZIP_NAME="Kernel-Caelum-${DEVICE_CODENAME}-${KERNEL_VERSION}-$(date +%d%m%Y).zip"
+          ZIP_NAME="Kernel-${DEVICE_CODENAME}-${KERNEL_VERSION}-$(date +%d%m%Y).zip"
 
           mkdir anykernel/dtb
 
@@ -80,7 +80,7 @@ jobs:
       - name: 🤌 Copy zip file to get 2 different zip files
         run: |
 
-          ZIP_ALTERNATIVE="KernelSU-Next-Caelum-${DEVICE_CODENAME}-latest.zip"
+          ZIP_ALTERNATIVE="KernelSU-Next-${DEVICE_CODENAME}-latest.zip"
           cp ${ZIP_NAME} $ZIP_ALTERNATIVE
 
           echo "Copied ${ZIP_NAME} as $ZIP_ALTERNATIVE"
