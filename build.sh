@@ -43,7 +43,7 @@ yes "" | make O=out ARCH=arm64 olddefconfig
 # --- VERIFY FINAL CONFIGURATION ---
 echo "=========================================="
 echo "Verifying Final Kernel Configuration..."
-if grep -q "CONFIG_KSU_SUSFS=" "out/.config"; then
+if grep -q "CONFIG_KSU_SUSFS=y" "out/.config"; then
     echo "[SUCCESS] susfs is enabled in the final config."
 else
     echo "[FAILURE] susfs is NOT enabled in the final config. Aborting build."
