@@ -16,17 +16,17 @@ bash KernelSU-Next/kernel/setup.sh -s "$KSU_NEXT_REF"
 
 cp KernelSU-Next/kernel/kernelsu.config arch/arm64/configs/vendor/kernelsu.config
 
-echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/vendor/xiaomi/${DEVICE_CODENAME}_defconfig
+echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/vendor/xiaomi/miatoll_defconfig
 
 export ARCH=arm64
 export SUBARCH=arm64
 export KBUILD_COMPILER_STRING=$(clang --version | head -n1)
 export CCACHE_EXEC=$(which ccache)
-export KBUILD_BUILD_HOST="Caelum-Github-actions"
+export KBUILD_BUILD_HOST="Github-actions"
 export LLVM_IAS=1
 export CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE=y
-
-make O=out ARCH=arm64 vendor/xiaomi/${DEVICE_CODENAME}_defconfig vendor/kernelsu.config
+make O=out mrproper
+make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig vendor/kernelsu.config
 yes "" | make O=out ARCH=arm64 olddefconfig
 
 make -j$(nproc --all) O=out \
