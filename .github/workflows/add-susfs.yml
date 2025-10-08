@@ -1,4 +1,4 @@
-name: Add SUSFS Integration
+name: Integrate SUSFS into Kernel
 
 on:
   workflow_dispatch:
@@ -10,9 +10,10 @@ jobs:
       contents: write
     
     steps:
-      - name: Checkout kernel repo
+      - name: Checkout vic branch
         uses: actions/checkout@v4
         with:
+          ref: vic
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
       
@@ -21,26 +22,49 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
       
-      - name: Add SUSFS as subtree
+      - name: Remove outdated KernelSU-Next folder
         run: |
-          git subtree add --prefix=KernelSU/susfs \
-            https://gitlab.com/simonpunk/susfs4ksu.git \
-            kernel-4.14 --squash
-      
-      - name: Apply SUSFS kernel patches
-        run: |
-          if [ -d "KernelSU/susfs/kernel_patches/4.14" ]; then
-            for patch in KernelSU/susfs/kernel_patches/4.14/*.patch; do
-              echo "Applying $patch"
-              patch -p1 < "$patch" || echo "Patch may already be applied or conflicts exist"
-            done
+          if [ -d "KernelSU-Next" ]; then
+            rm -rf KernelSU-Next
+            echo "Removed outdated KernelSU-Next folder"
           fi
-          
-      - name: Commit changes
+      
+      - name: Setup KernelSU-Next v1.1.1
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.1.1
+      
+      - name: Download and apply SUSFS v1.5.3 patch to KernelSU-Next
+        run: |
+          cd KernelSU-Next/
+          curl -o 0001-Kernel-Implement-SUSFS-v1.5.3.patch https://github.com/sidex15/KernelSU-Next/commit/1e750de25930e875612bbec0410de0088474c00b.patch
+          patch -p1 < 0001-Kernel-Implement-SUSFS-v1.5.3.patch
+          cd ..
+      
+      - name: Clone SUSFS kernel 4.14 patches
+        run: |
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.14 susfs4ksu
+      
+      - name: Copy SUSFS kernel patches
+        run: |
+          echo "Copying SUSFS patches to kernel directories..."
+          cp -v susfs4ksu/kernel_patches/fs/* fs/
+          cp -v susfs4ksu/kernel_patches/include/linux/* include/linux/
+      
+      - name: Apply main SUSFS kernel patch
+        run: |
+          cp -v susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.14.patch .
+          patch -p1 < 50_add_susfs_in_kernel-4.14.patch
+      
+      - name: Cleanup temporary SUSFS repo
+        run: |
+          rm -rf susfs4ksu
+          rm -f 50_add_susfs_in_kernel-4.14.patch
+      
+      - name: Commit all changes
         run: |
           git add .
-          git commit -m "Integrate SUSFS for kernel 4.14" || echo "No changes to commit"
+          git commit -m "Integrate KernelSU-Next v1.1.1 with SUSFS v1.5.3 for kernel 4.14" || echo "No changes to commit"
       
-      - name: Push changes
+      - name: Push to vic branch
         run: |
-          git push origin miatoll
+          git push origin vic
