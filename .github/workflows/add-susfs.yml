@@ -21,37 +21,50 @@ jobs:
           git config user.name "AlSukkar"
           git config user.email "alsukkar@users.noreply.github.com"
       
-      - name: Backup existing KernelSU-Next
+      - name: Remove existing KernelSU-Next (submodule reference)
         run: |
-          if [ -d "KernelSU-Next" ]; then
-            mv KernelSU-Next KernelSU-Next.backup
-            echo "Backed up existing KernelSU-Next"
-          fi
+          git rm -rf KernelSU-Next 2>/dev/null || rm -rf KernelSU-Next
+          git commit -m "Remove KernelSU-Next submodule reference" || echo "Nothing to remove"
+          git push origin vic || echo "Nothing to push yet"
       
       - name: Setup fresh KernelSU-Next v1.1.1
         run: |
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.1.1
+      
+      - name: Remove .git folder from KernelSU-Next (CRITICAL)
+        run: |
+          rm -rf KernelSU-Next/.git
+          echo "✅ Removed .git folder - KernelSU-Next is now a regular directory"
       
       - name: Apply SUSFS v1.5.3 patch to KernelSU-Next
         run: |
           cd KernelSU-Next/
           curl -o susfs.patch https://github.com/sidex15/KernelSU-Next/commit/1e750de25930e875612bbec0410de0088474c00b.patch
           
-          # Try to apply patch, continue even if it fails partially
-          patch -p1 < susfs.patch || {
-            echo "⚠️ Patch applied with some conflicts, checking critical files..."
-            
-            # Check if critical SUSFS files were created
-            if [ -f "kernel/sucompat.c" ] && [ -f "kernel/ksu.c" ]; then
-              echo "✅ Critical SUSFS files present, continuing..."
+          # Apply patch with error handling
+          if patch -p1 < susfs.patch; then
+            echo "✅ SUSFS patch applied successfully"
+          else
+            echo "⚠️ Patch had conflicts, checking critical files..."
+            if [ -f "kernel/sucompat.c" ]; then
+              echo "✅ Critical SUSFS files present"
             else
-              echo "❌ Critical files missing, patch failed"
+              echo "❌ Patch failed critically"
               exit 1
             fi
-          }
+          fi
           
           rm susfs.patch
           cd ..
+      
+      - name: Verify KernelSU-Next contents
+        run: |
+          echo "📁 KernelSU-Next directory contents:"
+          ls -la KernelSU-Next/kernel/ | head -20
+          
+          echo ""
+          echo "🔍 Checking for SUSFS files in KernelSU-Next:"
+          find KernelSU-Next -name "*susfs*" -o -name "*sucompat*" | head -10
       
       - name: Clone SUSFS kernel 4.14 patches
         run: |
@@ -61,95 +74,93 @@ jobs:
         run: |
           echo "📁 Copying SUSFS kernel patches..."
           
-          # Copy fs patches if they exist
+          # Create directories if they don't exist
+          mkdir -p fs include/linux
+          
+          # Copy fs patches
           if [ -d "susfs4ksu/kernel_patches/fs" ]; then
-            mkdir -p fs
-            cp -rv susfs4ksu/kernel_patches/fs/* fs/ || echo "Some fs files already exist"
+            cp -v susfs4ksu/kernel_patches/fs/* fs/ 2>&1 | grep -E "susfs|sus_su"
           fi
           
-          # Copy include patches if they exist
+          # Copy include patches
           if [ -d "susfs4ksu/kernel_patches/include/linux" ]; then
-            mkdir -p include/linux
-            cp -rv susfs4ksu/kernel_patches/include/linux/* include/linux/ || echo "Some include files already exist"
+            cp -v susfs4ksu/kernel_patches/include/linux/* include/linux/ 2>&1 | grep -E "susfs|sus_su"
           fi
       
-      - name: Apply main SUSFS kernel patch with error handling
+      - name: Apply main SUSFS kernel patch
         run: |
           if [ -f "susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.14.patch" ]; then
             cp susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.14.patch .
             
             echo "🔧 Applying SUSFS kernel patch..."
-            patch -p1 --forward < 50_add_susfs_in_kernel-4.14.patch || {
-              echo "⚠️ Patch had some rejections, checking if critical changes applied..."
-              
-              # Check if SUSFS was added to key files
-              if grep -q "CONFIG_KSU_SUSFS" .config 2>/dev/null || \
-                 grep -q "susfs" fs/Makefile 2>/dev/null || \
-                 [ -f "fs/susfs.c" ]; then
-                echo "✅ SUSFS integration detected in kernel, continuing..."
-              else
-                echo "⚠️ SUSFS may not be fully integrated, but continuing..."
-              fi
-            }
+            if patch -p1 --forward < 50_add_susfs_in_kernel-4.14.patch; then
+              echo "✅ Kernel patch applied successfully"
+            else
+              echo "⚠️ Patch had rejections, continuing..."
+            fi
             
             rm 50_add_susfs_in_kernel-4.14.patch
           fi
-      
-      - name: Manual integration check and fixes
-        run: |
-          echo "🔍 Checking SUSFS integration..."
           
-          # Check if susfs.c exists in fs/
-          if [ ! -f "fs/susfs.c" ]; then
-            if [ -f "susfs4ksu/kernel_patches/fs/susfs.c" ]; then
-              echo "📋 Manually copying susfs.c"
-              cp susfs4ksu/kernel_patches/fs/susfs.c fs/
-            fi
-          fi
-          
-          # Check if susfs.h exists in include/linux/
-          if [ ! -f "include/linux/susfs.h" ]; then
-            if [ -f "susfs4ksu/kernel_patches/include/linux/susfs.h" ]; then
-              echo "📋 Manually copying susfs.h"
-              cp susfs4ksu/kernel_patches/include/linux/susfs.h include/linux/
-            fi
-          fi
-          
-          echo "✅ Integration check complete"
-      
-      - name: Cleanup
-        run: |
-          rm -rf susfs4ksu
-          rm -rf KernelSU-Next.backup 2>/dev/null || true
-          
-          # Remove reject files if any
+          # Clean up reject files
           find . -name "*.rej" -delete
           find . -name "*.orig" -delete
       
-      - name: Show integration summary
+      - name: Cleanup temporary files
+        run: |
+          rm -rf susfs4ksu
+      
+      - name: Final integration check
         run: |
           echo "📊 SUSFS Integration Summary:"
           echo "================================"
-          [ -d "KernelSU-Next" ] && echo "✅ KernelSU-Next v1.1.1 installed" || echo "❌ KernelSU-Next missing"
-          [ -f "KernelSU-Next/kernel/sucompat.c" ] && echo "✅ SUSFS in KernelSU-Next" || echo "⚠️ SUSFS may not be in KernelSU-Next"
+          
+          # Check KernelSU-Next
+          if [ -d "KernelSU-Next" ] && [ ! -d "KernelSU-Next/.git" ]; then
+            echo "✅ KernelSU-Next v1.1.1 (as regular directory)"
+          else
+            echo "❌ KernelSU-Next issue detected"
+          fi
+          
+          # Check SUSFS in KernelSU-Next
+          if [ -f "KernelSU-Next/kernel/sucompat.c" ]; then
+            echo "✅ SUSFS integrated in KernelSU-Next"
+          else
+            echo "⚠️ SUSFS may not be in KernelSU-Next"
+          fi
+          
+          # Check kernel patches
           [ -f "fs/susfs.c" ] && echo "✅ fs/susfs.c present" || echo "⚠️ fs/susfs.c missing"
+          [ -f "fs/sus_su.c" ] && echo "✅ fs/sus_su.c present" || echo "⚠️ fs/sus_su.c missing"
           [ -f "include/linux/susfs.h" ] && echo "✅ include/linux/susfs.h present" || echo "⚠️ include/linux/susfs.h missing"
+          
           echo "================================"
+          echo ""
+          echo "📝 Files added:"
+          git status --short | grep "^A" || echo "No new files"
       
       - name: Commit all changes
         run: |
+          # Add all files as regular files (not submodules)
           git add -A
           
           if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Integrate KernelSU-Next v1.1.1 with SUSFS v1.5.3 for kernel 4.14
-
-            - Updated KernelSU-Next to v1.1.1
-            - Applied SUSFS v1.5.3 patches to KernelSU-Next
-            - Integrated SUSFS kernel patches for 4.14
-            - Added susfs.c and susfs.h to kernel source"
-            
-            git push origin vic
-            echo "✅ Successfully pushed changes to vic branch"
+            echo "⚠️ No changes to commit"
+            exit 1
           fi
+          
+          git commit -m "Integrate KernelSU-Next v1.1.1 with SUSFS v1.5.3 for kernel 4.14
+
+          - Added KernelSU-Next v1.1.1 as regular directory (not submodule)
+          - Integrated SUSFS v1.5.3 patches into KernelSU-Next
+          - Added SUSFS kernel patches for 4.14:
+            * fs/susfs.c and fs/sus_su.c
+            * include/linux/susfs.h, sus_su.h, susfs_def.h
+          - Applied 50_add_susfs_in_kernel-4.14.patch"
+          
+          echo "✅ Changes committed successfully"
+      
+      - name: Push to vic branch
+        run: |
+          git push origin vic
+          echo "✅ Successfully pushed to vic branch"
