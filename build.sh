@@ -12,7 +12,7 @@ if [ -z "$KSU_NEXT_REF" ]; then
 fi
 
 echo "Setting up KernelSU-Next version: $KSU_NEXT_REF"
-bash KernelSU-Next/kernel/setup.sh -s "$KSU_NEXT_REF"
+bash KernelSU-Next/kernel/setup.sh "$KSU_NEXT_REF"
 
 cp KernelSU-Next/kernel/kernelsu.config arch/arm64/configs/vendor/kernelsu.config
 
@@ -32,7 +32,6 @@ yes "" | make O=out ARCH=arm64 olddefconfig
 make -j$(nproc --all) O=out \
     ARCH=arm64 \
     CC="ccache clang" \
-    LD=ld.lld \
     AR=llvm-ar \
     NM=llvm-nm \
     LLVM_IAS=1 \
