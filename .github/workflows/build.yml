@@ -1,4 +1,4 @@
-name: Build KernelSU-Next for MiAtoll
+name: Build KernelSU-Next with SUSFS for MiAtoll
 
 on:
   push:
@@ -14,27 +14,26 @@ jobs:
     runs-on: ubuntu-22.04
     container: ghcr.io/tedomi2705/kernel_builder_image:latest
     permissions:
-     contents: write
-
+      contents: write
+    
     steps:
-      - name: 📂 Checkout builder's sourcecode and get files
+      - name: 📂 Checkout builder's sourcecode
         uses: actions/checkout@v4
- 
-      - name: ⚡ Checkout kernel's sourcecode and clone submodules
+      
+      - name: ⚡ Checkout kernel's sourcecode (vic branch with SUSFS)
         run: |
           git clone --depth=1 --recurse-submodules https://github.com/AlSukkar/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b vic
-      - name: ⚡ Clone KernelSU-Next source
-        run: |
-          cd kernel_xiaomi_sm6250
-          git clone --depth=1 -b v1.1.1 https://github.com/KernelSU-Next/KernelSU-Next KernelSU-Next
+      
       - name: 📅 Export date of build
         run: |
           echo "DATE=$(date +%d%m%Y)" >> $GITHUB_ENV
+      
       - name: 📥 Clone AnyKernel3
         run: |
           cd kernel_xiaomi_sm6250
           git clone -b miatoll --depth=1 https://github.com/Oneloutre/AnyKernel3.git anykernel
           rm -rf anykernel/.git
+      
       - name: 🔍 Device's codename and kernel's version
         run: |
           cd kernel_xiaomi_sm6250
@@ -44,35 +43,40 @@ jobs:
           echo "Kernel Version: $KERNEL_VERSION"
           echo "DEVICE_CODENAME=$DEVICE_CODENAME" >> $GITHUB_ENV
           echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
+      
       - name: 🚀 Enable ccache to speed the build up
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           max-size: 7G
+      
       - name: Prepare Build Scripts
         run: chmod +x build.sh
-      - name: 🛠️ Build the kramel
+      
+      - name: 🛠️ Build the kernel with SUSFS
         env:
           KSU_NEXT_REF: v1.1.1
         run: |
           ./build.sh miatoll
+      
       - name: 🚀 Copy the compiled kernel to AnyKernel3 then create the zip
         run: |
           cd kernel_xiaomi_sm6250
-          ZIP_NAME="Kernel-Caelum-${DEVICE_CODENAME}-${KERNEL_VERSION}-$(date +%d%m%Y).zip"
-          mkdir anykernel/dtb
+          ZIP_NAME="Kernel-SUSFS-${DEVICE_CODENAME}-${KERNEL_VERSION}-$(date +%d%m%Y).zip"
+          mkdir -p anykernel/dtb
           cp out/arch/arm64/boot/Image.gz anykernel/
           cp out/arch/arm64/boot/dtbo.img anykernel/
-          cp out/arch/arm64/boot/dtb.img anykernel/dtb
+          cp out/arch/arm64/boot/dtb.img anykernel/dtb/
           cd anykernel && zip -r9 $ZIP_NAME ./*
           mv $ZIP_NAME ../../
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+      
       - name: 🤌 Copy zip file to get 2 different zip files
         run: |
-          ZIP_ALTERNATIVE="KernelSU-Next-Caelum-${DEVICE_CODENAME}-latest.zip"
+          ZIP_ALTERNATIVE="KernelSU-Next-SUSFS-${DEVICE_CODENAME}-latest.zip"
           cp ${ZIP_NAME} $ZIP_ALTERNATIVE
           echo "Copied ${ZIP_NAME} as $ZIP_ALTERNATIVE"
           echo "ZIP_ALTERNATIVE=$ZIP_ALTERNATIVE" >> $GITHUB_ENV
-          
+      
       - name: 📤 Publish github release
         uses: softprops/action-gh-release@v2
         with:
@@ -80,11 +84,11 @@ jobs:
           tag_name: "latest"
           draft: false
           prerelease: false
-
+      
       - name: 📤 Publish with tag associated to the kernel and the date
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_NAME }}
-          tag_name: Kernel-${{ env.DEVICE_CODENAME }}-${{ env.KERNEL_VERSION }}-${{ env.DATE }}
+          tag_name: Kernel-SUSFS-${{ env.DEVICE_CODENAME }}-${{ env.KERNEL_VERSION }}-${{ env.DATE }}
           draft: false
           prerelease: false
