@@ -48,7 +48,12 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           max-size: 7G
-      
+      - name: 🕵️ Locate the 32-bit ARM toolchain
+        run: |
+          echo "Searching for the 32-bit toolchain..."
+          find /usr -name "arm-linux-androideabi-*"
+          echo "---"
+          echo "Current PATH is: $PATH"  
       - name: Prepare Build Scripts
         run: chmod +x build.sh
       
