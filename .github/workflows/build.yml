@@ -22,7 +22,7 @@ jobs:
  
       - name: ⚡ Checkout kernel's sourcecode and clone submodules
         run: |
-          git clone --depth=1 --recurse-submodules https://github.com/AlSukkar/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b bka
+          git clone --depth=1 --recurse-submodules https://github.com/AlSukkar/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b vic
       - name: ⚡ Clone KernelSU-Next source
         run: |
           cd kernel_xiaomi_sm6250
