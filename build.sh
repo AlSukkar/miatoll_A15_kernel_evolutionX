@@ -3,60 +3,32 @@
 # Always build for miatoll
 DEVICE_CODENAME="miatoll"
 
-# Navigate into the kernel source directory
 cd kernel_xiaomi_sm6250
 
-# --- PREPARE KERNELSU ---
-# Run the setup script to patch the kernel source files.
+# KernelSU-Next integration
+if [ -z "$KSU_NEXT_REF" ]; then
+  echo "Error: KSU_NEXT_REF is not set"
+  exit 1
+fi
 
-# --- NEW: VERIFY SETUP SCRIPT ---
-# echo "=========================================="
-# echo "Verifying setup.sh Kconfig patch..."
-# if grep -q "kernelsu" "drivers/Kconfig"; then
-#     echo "[SUCCESS] drivers/Kconfig was successfully patched."
-# else
-#     echo "[FAILURE] setup.sh did NOT patch drivers/Kconfig. The build system will not know about KSU options. Aborting."
-#     exit 1
-# fi
-# echo "=========================================="
-# --- END NEW VERIFICATION ---
+echo "Setting up KernelSU-Next version: $KSU_NEXT_REF"
+bash KernelSU-Next/kernel/setup.sh -s "$KSU_NEXT_REF"
 
+cp KernelSU-Next/kernel/kernelsu.config arch/arm64/configs/vendor/kernelsu.config
 
-# --- SET UP BUILD ENVIRONMENT ---
+echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/vendor/xiaomi/${DEVICE_CODENAME}_defconfig
+
 export ARCH=arm64
 export SUBARCH=arm64
 export KBUILD_COMPILER_STRING=$(clang --version | head -n1)
 export CCACHE_EXEC=$(which ccache)
-export KBUILD_BUILD_HOST="Caelum-Github"
+export KBUILD_BUILD_HOST="Caelum-Github-actions"
 export LLVM_IAS=1
+export CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE=y
 
-# --- CONFIGURE KERNEL ---
-# 1. CRITICAL: Clean any old, incorrect configuration from the output directory.
-make O=out mrproper
-
-# 2. Merge the device defconfig and the KernelSU config to create the final build config.
-make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig vendor/kernelsu.config
-echo "CONFIG_KSU=y" >> out/.config
-echo "CONFIG_KSU_SUSFS=y" >> out/.config
-# 3. Finalize the config, accepting defaults for any new options.
+make O=out ARCH=arm64 vendor/xiaomi/${DEVICE_CODENAME}_defconfig vendor/kernelsu.config
 yes "" | make O=out ARCH=arm64 olddefconfig
 
-# --- VERIFY FINAL CONFIGURATION ---
-echo "=========================================="
-echo "Verifying Final Kernel Configuration..."
-if grep -q "CONFIG_KSU_SUSFS=y" "out/.config"; then
-    echo "[SUCCESS] susfs is enabled in the final config."
-else
-    echo "[FAILURE] susfs is NOT enabled in the final config. Aborting build."
-    exit 1
-fi
-echo "Checking Kernel Name:"
-grep "CONFIG_LOCALVERSION" "out/.config"
-echo "=========================================="
-# --- END VERIFICATION ---
-
-
-# --- COMPILE KERNEL ---
 make -j$(nproc --all) O=out \
     ARCH=arm64 \
     CC="ccache clang" \
