@@ -23,32 +23,27 @@ jobs:
       - name: ⚡ Checkout kernel's sourcecode and clone submodules
         run: |
           git clone --depth=1 --recurse-submodules https://github.com/AlSukkar/kernel_xiaomi_sm6250/ kernel_xiaomi_sm6250 -b bka
-      # - name: ⚡ Clone KernelSU-Next source
-        # run: |
-        #   cd kernel_xiaomi_sm6250
-        #   git clone --depth=1 -b v1.1.1 https://github.com/KernelSU-Next/KernelSU-Next KernelSU-Next
+      - name: ⚡ Clone KernelSU-Next source
+        run: |
+          cd kernel_xiaomi_sm6250
+          git clone --depth=1 -b v1.1.1 https://github.com/KernelSU-Next/KernelSU-Next KernelSU-Next
       - name: 📅 Export date of build
         run: |
           echo "DATE=$(date +%d%m%Y)" >> $GITHUB_ENV
-
       - name: 📥 Clone AnyKernel3
         run: |
           cd kernel_xiaomi_sm6250
           git clone -b miatoll --depth=1 https://github.com/Oneloutre/AnyKernel3.git anykernel
           rm -rf anykernel/.git
-
       - name: 🔍 Device's codename and kernel's version
         run: |
           cd kernel_xiaomi_sm6250
           DEVICE_CODENAME=miatoll
           KERNEL_VERSION=$(make kernelversion)
-
           echo "Device Codename: $DEVICE_CODENAME"
           echo "Kernel Version: $KERNEL_VERSION"
-
           echo "DEVICE_CODENAME=$DEVICE_CODENAME" >> $GITHUB_ENV
           echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
-
       - name: 🚀 Enable ccache to speed the build up
         uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -60,29 +55,21 @@ jobs:
           KSU_NEXT_REF: v1.1.1
         run: |
           ./build.sh miatoll
-
       - name: 🚀 Copy the compiled kernel to AnyKernel3 then create the zip
         run: |
           cd kernel_xiaomi_sm6250
-          ZIP_NAME="Kernel-${DEVICE_CODENAME}-${KERNEL_VERSION}-$(date +%d%m%Y).zip"
-
+          ZIP_NAME="Kernel-Caelum-${DEVICE_CODENAME}-${KERNEL_VERSION}-$(date +%d%m%Y).zip"
           mkdir anykernel/dtb
-
           cp out/arch/arm64/boot/Image.gz anykernel/
           cp out/arch/arm64/boot/dtbo.img anykernel/
           cp out/arch/arm64/boot/dtb.img anykernel/dtb
-
           cd anykernel && zip -r9 $ZIP_NAME ./*
           mv $ZIP_NAME ../../
-
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
-
       - name: 🤌 Copy zip file to get 2 different zip files
         run: |
-
-          ZIP_ALTERNATIVE="KernelSU-Next-${DEVICE_CODENAME}-latest.zip"
+          ZIP_ALTERNATIVE="KernelSU-Next-Caelum-${DEVICE_CODENAME}-latest.zip"
           cp ${ZIP_NAME} $ZIP_ALTERNATIVE
-
           echo "Copied ${ZIP_NAME} as $ZIP_ALTERNATIVE"
           echo "ZIP_ALTERNATIVE=$ZIP_ALTERNATIVE" >> $GITHUB_ENV
           
@@ -98,6 +85,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_NAME }}
-          tag_name: Kernel-Caelum-${{ env.DEVICE_CODENAME }}-${{ env.KERNEL_VERSION }}-${{ env.DATE }}
+          tag_name: Kernel-${{ env.DEVICE_CODENAME }}-${{ env.KERNEL_VERSION }}-${{ env.DATE }}
           draft: false
           prerelease: false
