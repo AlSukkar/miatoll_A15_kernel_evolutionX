@@ -1,0 +1,46 @@
+name: Add SUSFS Integration
+
+on:
+  workflow_dispatch:
+
+jobs:
+  integrate-susfs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout kernel repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Add SUSFS as subtree
+        run: |
+          git subtree add --prefix=KernelSU/susfs \
+            https://gitlab.com/simonpunk/susfs4ksu.git \
+            kernel-4.14 --squash
+      
+      - name: Apply SUSFS kernel patches
+        run: |
+          if [ -d "KernelSU/susfs/kernel_patches/4.14" ]; then
+            for patch in KernelSU/susfs/kernel_patches/4.14/*.patch; do
+              echo "Applying $patch"
+              patch -p1 < "$patch" || echo "Patch may already be applied or conflicts exist"
+            done
+          fi
+          
+      - name: Commit changes
+        run: |
+          git add .
+          git commit -m "Integrate SUSFS for kernel 4.14" || echo "No changes to commit"
+      
+      - name: Push changes
+        run: |
+          git push origin miatoll
